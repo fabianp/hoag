@@ -4,3 +4,8 @@
 HOAG
 ====
 Hyperparameter optimization with approximate gradient
+
+Depends
+-------
+
+  * scikit-learn 0.16
