@@ -10,7 +10,7 @@ class LogisticRegressionCV(linear_model.base.BaseEstimator,
 
     def __init__(
                  self, alpha0=0., tol=0.1, callback=None, verbose=False,
-                 tolerance_decrease='exponential', max_iter=100):
+                 tolerance_decrease='exponential', max_iter=10):
         self.alpha0 = alpha0
         self.tol = tol
         self.callback = callback
@@ -35,8 +35,8 @@ class LogisticRegressionCV(linear_model.base.BaseEstimator,
         def h_crossed(x, alpha):
             return np.exp(alpha[0]) * x
 
-        from hoag import _minimize_lbfgsb
-        opt = _minimize_lbfgsb(
+        from hoag import hoag
+        opt = hoag(
             h_func_grad, h_hessian, h_crossed, g_func_grad, x0,
             callback=callback,
             tolerance_decrease=self.tolerance_decrease,

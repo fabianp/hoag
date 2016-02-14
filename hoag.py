@@ -3,10 +3,9 @@ from numpy import array, asarray, float64, int32, zeros
 from scipy import linalg
 from scipy.optimize.lbfgsb import _lbfgsb
 from scipy.sparse import linalg as splinalg
-import autodiff
 
 
-def _minimize_lbfgsb(
+def hoag(
     h_func_grad, h_hessian, h_crossed, g_func_grad, x0, bounds=None,
     lambda0=0., disp=None, maxcor=10, ftol=1e-24,
     maxfun=15000, maxiter=100, only_fit=False,
@@ -15,6 +14,7 @@ def _minimize_lbfgsb(
     """
     Minimize a scalar function of one or more variables using the L-BFGS-B
     algorithm.
+
     Options
     -------
     disp : bool
@@ -243,187 +243,3 @@ def _minimize_lbfgsb(
         warnflag = 2
 
     return x, lambdak, warnflag
-
-
-class MultitaskRidgeCV:
-
-    def __init__(self, tolerance_decrease='exponential', alpha0=0.0,
-                 max_iter=100):
-        self.tolerance_decrease = tolerance_decrease
-        self.alpha0 = alpha0
-        self.max_iter = max_iter
-
-    def fit(self, Xt, yt, Xh, yh, n_features, n_task, callback=None):
-        x0 = np.zeros(Xt.shape[1])
-
-        M = np.eye(n_task, n_features)
-        M -= np.ones((n_task, n_features), dtype=np.float) / float(n_features)
-
-        def h(w, alpha):
-            # compute w_average
-            w_reshape = np.reshape(w, (n_features, n_task))
-            v = yt - Xt.dot(w)
-            loss = v.dot(v)
-            loss += np.exp(alpha[0]) * w.dot(w)
-            tmp = w_reshape - np.outer(w_reshape.mean(1), np.ones(n_task))
-            tmp = tmp.ravel()
-            loss += np.exp(alpha[1]) * tmp.dot(tmp)
-            return loss
-
-        # def h_grad2(w, alpha):
-        #     w_reshape = np.reshape(w, (n_features, n_task))
-        #     v = yt - Xt.dot(w)
-        #     grad = - 2 * Xt.T.dot(v)
-        #     Mw = M.dot(w_reshape)
-        #     grad += 2 * np.exp(alpha[0]) * w
-        #     grad += 2 * np.exp(alpha[1]) * ((Mw)).ravel()
-        #     return grad
-
-        h_grad = autodiff.Gradient(h, wrt='w')
-        # def h_grad(w, alpha):
-        #     tmp = autodiff.Gradient(lambda x: h(x, alpha))
-        #     return tmp(w)
-
-        # from scipy import optimize
-        # x_test = np.random.randn(x0.size)
-        # chk = optimize.check_grad(h, h_grad, x_test, [0., 0.])
-        # print(chk)
-        # chk = optimize.check_grad(h, h_grad2, x_test, [0., 0.])
-        # print(chk)
-        # 1/0
-
-        def h_func_grad(w, alpha):
-            return (h(w, alpha), h_grad(w, alpha))
-
-        def g(w):
-            # compute w_average
-            v = yh - Xh.dot(w)
-            loss = v.dot(v)
-            return loss
-
-        g_grad = autodiff.Gradient(g, wrt='w')
-
-        def g_func_grad(w):
-            return (g(w), g_grad(w))
-
-        def h_hessian(w, alpha):
-            tmp = autodiff.HessianVector(h, wrt='w')
-            return lambda x: tmp(w, alpha, vectors=x)
-
-        def h_crossed(w, alpha):
-
-            def p1(w):
-                return np.exp(alpha[0]) * w.dot(w)
-
-            def p2(w):
-                w_reshape = np.reshape(w, (n_features, n_task))
-                tmp = w_reshape - np.outer(w_reshape.mean(1), np.ones(n_task))
-                tmp = tmp.ravel()
-                # w_reshape = np.reshape(w, (n_features, n_task))
-                # tmp = (w_reshape.dot(M)).ravel()
-                return np.exp(alpha[1]) * tmp.dot(tmp)
-
-            gp1 = autodiff.Gradient(p1)
-            gp2 = autodiff.Gradient(p2)
-            return np.array((gp1(w), gp2(w)))
-
-        opt = _minimize_lbfgsb(
-            h_func_grad, h_hessian, h_crossed, g_func_grad, x0,
-            callback=callback,
-            tolerance_decrease=self.tolerance_decrease,
-            lambda0=[self.alpha0, self.alpha0], maxiter=self.max_iter)
-
-        self.coef_ = opt[0]
-        self.alpha_ = opt[1]
-        return self
-
-
-
-class MultitaskRidge:
-
-    def __init__(self, alpha0=[0.0, 0.0], max_iter=100):
-        self.alpha0 = alpha0
-        self.max_iter = max_iter
-
-    def fit(self, Xt, yt, n_features, n_task, callback=None):
-        x0 = np.zeros(Xt.shape[1])
-
-        def h(w, alpha):
-            # compute w_average
-            w_tmp = np.reshape(w, (n_features, n_task))
-            w_average = w_tmp.mean(1)
-            v = yt - Xt.dot(w)
-            loss = v.dot(v)
-            loss += np.exp(alpha[0]) * w.dot(w)
-            tmp = w - np.outer(w_average, np.ones(n_task)).T.ravel()
-            loss += np.exp(alpha[1]) * tmp.dot(tmp)
-            return loss
-
-        h_grad = autodiff.Gradient(h, wrt='w')
-        # def h_grad(w, alpha):
-        #     tmp = autodiff.Gradient(lambda x: h(x, alpha))
-        #     return tmp(w)
-
-        def h_func_grad(w, alpha):
-            return (h(w, alpha), h_grad(w, alpha))
-
-        from scipy import optimize
-        opt = optimize.fmin_l_bfgs_b(
-            h, x0, fprime=h_grad,
-            args=(self.alpha0,), maxiter=2000)
-
-        self.coef_ = opt[0]
-        return self
-
-    def score(self, X_test, y_test):
-
-        # compute w_average
-        v = y_test - X_test.dot(self.coef_)
-        loss = v.dot(v)
-        return loss
-
-
-class MultitaskRidge2:
-
-    def __init__(self, alpha0=[0.0, 0.0], max_iter=100):
-        self.alpha0 = alpha0
-        self.max_iter = max_iter
-
-    def fit(self, Xt, yt, n_features, n_task, callback=None):
-        x0 = np.zeros(Xt.shape[1])
-
-        M = np.eye(n_task, n_features)
-        M -= np.ones((n_task, n_features), dtype=np.float) / float(n_features)
-
-        def h(w, alpha):
-            # compute w_average
-            w_reshape = np.reshape(w, (n_features, n_task))
-            v = yt - Xt.dot(w)
-            loss = v.dot(v)
-            loss += np.exp(alpha[0]) * w.dot(w)
-            tmp = (w_reshape.dot(M)).ravel()
-            loss += np.exp(alpha[1]) * tmp.dot(tmp)
-            return loss
-
-        h_grad = autodiff.Gradient(h, wrt='w')
-        # def h_grad(w, alpha):
-        #     tmp = autodiff.Gradient(lambda x: h(x, alpha))
-        #     return tmp(w)
-
-        def h_func_grad(w, alpha):
-            return (h(w, alpha), h_grad(w, alpha))
-
-        from scipy import optimize
-        opt = optimize.fmin_l_bfgs_b(
-            h, x0, fprime=h_grad,
-            args=(self.alpha0,), maxiter=2000)
-
-        self.coef_ = opt[0]
-        return self
-
-    def score(self, X_test, y_test):
-
-        # compute w_average
-        v = y_test - X_test.dot(self.coef_)
-        loss = v.dot(v)
-        return loss
