@@ -17,11 +17,11 @@ def test_LogisticRegressionCV():
 
     # compute the scores
     all_scores = []
-    all_alphas = np.linspace(-12, 0, 10)
+    all_alphas = np.linspace(-12, 0, 5)
     for a in all_alphas:
         lr = linear_model.LogisticRegression(
-            solver='sag', C=np.exp(-a), fit_intercept=False, tol=1e-6,
-            max_iter=200)
+            solver='lbfgs', C=np.exp(-a), fit_intercept=False, tol=1e-6,
+            max_iter=100)
         lr.fit(Xt, yt)
         score_scv = linear_model.logistic._logistic_loss(
             lr.coef_.ravel(), Xh, yh, 0)
