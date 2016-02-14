@@ -35,8 +35,8 @@ class LogisticRegressionCV(linear_model.base.BaseEstimator,
         def h_crossed(x, alpha):
             return np.exp(alpha[0]) * x
 
-        from hoag import hoag
-        opt = hoag(
+        from hoag import hoag_lbfgs
+        opt = hoag_lbfgs(
             h_func_grad, h_hessian, h_crossed, g_func_grad, x0,
             callback=callback,
             tolerance_decrease=self.tolerance_decrease,
