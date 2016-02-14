@@ -5,6 +5,10 @@ HOAG
 ====
 Hyperparameter optimization with approximate gradient
 
+.. image:: https://raw.githubusercontent.com/fabianp/hoag/master/doc/comparison_ho_real_sim.png
+   :scale: 50 %
+
+
 Depends
 -------
 
