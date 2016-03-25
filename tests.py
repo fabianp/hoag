@@ -2,7 +2,7 @@
 import numpy as np
 from sklearn.datasets import fetch_20newsgroups_vectorized
 from sklearn import linear_model, cross_validation
-from logistic import LogisticRegressionCV
+from hoag import LogisticRegressionCV
 
 
 def test_LogisticRegressionCV():

@@ -3,15 +3,13 @@ from numpy import array, asarray, float64, int32, zeros
 from scipy import linalg
 from scipy.optimize.lbfgsb import _lbfgsb
 from scipy.sparse import linalg as splinalg
-import autodiff
 from sklearn.metrics.pairwise import pairwise_kernels, euclidean_distances
 
 
 def _minimize_lbfgsb(
     h_sol_approx, h_hessian, h_crossed, g_func_grad, g_cross, x0, bounds=None,
     lambda0=0., disp=None, maxcor=10, ftol=1e-24,
-    maxfun=15000, maxiter=100, only_fit=False,
-    iprint=-1, maxls=20, tolerance_decrease='exponential',
+    maxiter=100, maxls=20, tolerance_decrease='exponential',
     callback=None):
     """
     Minimize a scalar function of one or more variables using the L-BFGS-B
