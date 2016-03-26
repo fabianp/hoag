@@ -19,6 +19,8 @@ class LogisticRegressionCV(linear_model.base.BaseEstimator,
         self.max_iter = max_iter
 
     def fit(self, Xt, yt, Xh, yh, callback=None):
+        if not np.all(np.unique(yt) == np.array([-1, 1])):
+            raise ValueError
         x0 = np.random.randn(Xt.shape[1])
 
         def h_func_grad(x, alpha):

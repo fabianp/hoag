@@ -1,15 +1,14 @@
 import numpy as np
-from scipy import sparse
 from sklearn import linear_model
-from sklearn.utils.fixes import expit
-from sklearn.utils.extmath import log_logistic, safe_sparse_dot
+from sklearn.utils.extmath import safe_sparse_dot, logsumexp, squared_norm
+from sklearn.preprocessing import LabelBinarizer
+from .hoag import hoag_lbfgs
 
 
 class MultiLogisticRegressionCV(linear_model.base.BaseEstimator,
                            linear_model.base.LinearClassifierMixin):
 
-    def __init__(
-                 self, alpha0=None, tol=0.1, callback=None, verbose=False,
+    def __init__(self, alpha0=None, tol=0.1, callback=None, verbose=0,
                  tolerance_decrease='exponential', max_iter=10):
         self.alpha0 = alpha0
         self.tol = tol
@@ -19,30 +18,53 @@ class MultiLogisticRegressionCV(linear_model.base.BaseEstimator,
         self.max_iter = max_iter
 
     def fit(self, Xt, yt, Xh, yh, callback=None):
-        x0 = np.random.randn(Xt.shape[1])
+        lbin = LabelBinarizer()
+        lbin.fit(yt)
+        Yt_multi = lbin.transform(yt)
+        Yh_multi = lbin.transform(yh)
+        sample_weight_train = np.ones(Xt.shape[0])
+        sample_weight_test = np.ones(Xh.shape[0])
 
-        assert x0.size == self.alpha0.size
+        if Yt_multi.shape[1] == 1:
+            Yt_multi = np.hstack([1 - Yt_multi, Yt_multi])
+            Yh_multi = np.hstack([1 - Yh_multi, Yh_multi])
+            print('warning: only two classes detected')
+
+        n_classes = Yt_multi.shape[1]
+
+        # if not np.all(np.unique(yt) == np.array([-1, 1])):
+        #     raise ValueError
+        x0 = np.zeros(Xt.shape[1] * n_classes)
+
+        # assert x0.size == self.alpha0.size
 
         def h_func_grad(x, alpha):
-            return _logistic_loss_and_grad(
-                x, Xt, yt, np.exp(alpha))
+            # x = x.reshape((-1,Yt_multi.shape[1]))
+            return _multinomial_loss_grad(
+                x, Xt, Yt_multi, np.exp(alpha), sample_weight_train)[:2]
 
         def h_hessian(x, alpha):
-            return _logistic_grad_hess(
-                x, Xt, yt, np.exp(alpha))[1]
+            # x = x.reshape((-1,Yt_multi.shape[1]))
+            return _multinomial_grad_hess(
+                x, Xt, Yt_multi, np.exp(alpha), sample_weight_train)[1]
 
         def g_func_grad(x, alpha):
-            return _logistic_loss_and_grad(x, Xh, yh, 0)
+            # x = x.reshape((-1,Yt_multi.shape[1]))
+            return _multinomial_loss_grad(
+                x, Xh, Yh_multi, np.zeros(alpha.size),
+                sample_weight_test)[:2]
 
         def h_crossed(x, alpha):
-            return np.outer(np.exp(alpha), x).T
+            # return x.reshape((n_classes, -1)) * alpha
+            # x = x.reshape((-1,Yt_multi.shape[1]))
+            return np.outer(np.exp(alpha), x)
 
-        from hoag import hoag_lbfgs
         opt = hoag_lbfgs(
             h_func_grad, h_hessian, h_crossed, g_func_grad, x0,
             callback=callback,
             tolerance_decrease=self.tolerance_decrease,
-            lambda0=self.alpha0, maxiter=self.max_iter)
+            lambda0=self.alpha0, maxiter=self.max_iter,
+            verbose=self.verbose)
 
         # opt = _minimize_lbfgsb(
         #     h_func_grad, DE_DX, H, x0, callback=callback,
@@ -59,173 +81,190 @@ class MultiLogisticRegressionCV(linear_model.base.BaseEstimator,
     def predict(self, X):
         return np.sign(self.decision_function(X))
 
-### The following is copied from scikit-learn
+### The following is adapted from scikit-learn
 
 
+def _multinomial_loss(w, X, Y, alpha, sample_weight):
+    """Computes multinomial loss and class probabilities.
 
-# .. some helper functions for logistic_regression_path ..
-def _intercept_dot(w, X, y):
-    """Computes y * np.dot(X, w).
-    It takes into consideration if the intercept should be fit or not.
     Parameters
     ----------
-    w : ndarray, shape (n_features,) or (n_features + 1,)
+    w : ndarray, shape (n_classes * n_features,) or
+        (n_classes * (n_features + 1),)
         Coefficient vector.
+
     X : {array-like, sparse matrix}, shape (n_samples, n_features)
         Training data.
-    y : ndarray, shape (n_samples,)
-        Array of labels.
-    """
-    c = 0.
-    if w.size == X.shape[1] + 1:
-        c = w[-1]
-        w = w[:-1]
 
-    z = safe_sparse_dot(X, w) + c
-    return w, c, y * z
+    Y : ndarray, shape (n_samples, n_classes)
+        Transformed labels according to the output of LabelBinarizer.
 
-
-def _logistic_loss_and_grad(w, X, y, alpha, sample_weight=None):
-    """Computes the logistic loss and gradient.
-    Parameters
-    ----------
-    w : ndarray, shape (n_features,) or (n_features + 1,)
-        Coefficient vector.
-    X : {array-like, sparse matrix}, shape (n_samples, n_features)
-        Training data.
-    y : ndarray, shape (n_samples,)
-        Array of labels.
     alpha : float
         Regularization parameter. alpha is equal to 1 / C.
+
     sample_weight : array-like, shape (n_samples,) optional
         Array of weights that are assigned to individual samples.
         If not provided, then each sample is given unit weight.
+
     Returns
     -------
-    out : float
-        Logistic loss.
-    grad : ndarray, shape (n_features,) or (n_features + 1,)
-        Logistic gradient.
+    loss : float
+        Multinomial loss.
+
+    p : ndarray, shape (n_samples, n_classes)
+        Estimated class probabilities.
+
+    w : ndarray, shape (n_classes, n_features)
+        Reshaped param vector excluding intercept terms.
+
+    Reference
+    ---------
+    Bishop, C. M. (2006). Pattern recognition and machine learning.
+    Springer. (Chapter 4.3.4)
     """
-    _, n_features = X.shape
-    grad = np.empty_like(w)
-
-    w, c, yz = _intercept_dot(w, X, y)
-
-    if sample_weight is None:
-        sample_weight = np.ones(y.shape[0])
-
-    # Logistic loss is the negative of the log of the logistic function.
-    out = -np.sum(sample_weight * log_logistic(yz)) + .5 * (alpha * w).dot(w)
-
-    z = expit(yz)
-    z0 = sample_weight * (z - 1) * y
-
-    grad[:n_features] = safe_sparse_dot(X.T, z0) + alpha * w
-
-    # Case where we fit the intercept.
-    if grad.shape[0] > n_features:
-        grad[-1] = z0.sum()
-    return out, grad
-
-
-def _logistic_loss(w, X, y, alpha, sample_weight=None):
-    """Computes the logistic loss.
-    Parameters
-    ----------
-    w : ndarray, shape (n_features,) or (n_features + 1,)
-        Coefficient vector.
-    X : {array-like, sparse matrix}, shape (n_samples, n_features)
-        Training data.
-    y : ndarray, shape (n_samples,)
-        Array of labels.
-    alpha : ndarray
-        Regularization parameter. alpha is equal to 1 / C.
-    sample_weight : array-like, shape (n_samples,) optional
-        Array of weights that are assigned to individual samples.
-        If not provided, then each sample is given unit weight.
-    Returns
-    -------
-    out : float
-        Logistic loss.
-    """
-    w, c, yz = _intercept_dot(w, X, y)
-
-    if sample_weight is None:
-        sample_weight = np.ones(y.shape[0])
-
-    # Logistic loss is the negative of the log of the logistic function.
-    out = -np.sum(sample_weight * log_logistic(yz)) + .5 * (alpha * w).dot(w)
-    return out
-
-
-def _logistic_grad_hess(w, X, y, alpha, sample_weight=None):
-    """Computes the gradient and the Hessian, in the case of a logistic loss.
-    Parameters
-    ----------
-    w : ndarray, shape (n_features,) or (n_features + 1,)
-        Coefficient vector.
-    X : {array-like, sparse matrix}, shape (n_samples, n_features)
-        Training data.
-    y : ndarray, shape (n_samples,)
-        Array of labels.
-    alpha : float
-        Regularization parameter. alpha is equal to 1 / C.
-    sample_weight : array-like, shape (n_samples,) optional
-        Array of weights that are assigned to individual samples.
-        If not provided, then each sample is given unit weight.
-    Returns
-    -------
-    grad : ndarray, shape (n_features,) or (n_features + 1,)
-        Logistic gradient.
-    Hs : callable
-        Function that takes the gradient as a parameter and returns the
-        matrix product of the Hessian and gradient.
-    """
-    n_samples, n_features = X.shape
-    grad = np.empty_like(w)
-    fit_intercept = grad.shape[0] > n_features
-
-    w, c, yz = _intercept_dot(w, X, y)
-
-    if sample_weight is None:
-        sample_weight = np.ones(y.shape[0])
-
-    z = expit(yz)
-    z0 = sample_weight * (z - 1) * y
-
-    grad[:n_features] = safe_sparse_dot(X.T, z0) + alpha * w
-
-    # Case where we fit the intercept.
+    n_classes = Y.shape[1]
+    n_features = X.shape[1]
+    fit_intercept = w.size == (n_classes * (n_features + 1))
+    w = w.reshape(n_classes, -1)
+    alpha = alpha.reshape(n_classes, -1)
+    sample_weight = sample_weight[:, np.newaxis]
     if fit_intercept:
-        grad[-1] = z0.sum()
-
-    # The mat-vec product of the Hessian
-    d = sample_weight * z * (1 - z)
-    if sparse.issparse(X):
-        dX = safe_sparse_dot(sparse.dia_matrix((d, 0),
-                             shape=(n_samples, n_samples)), X)
+        intercept = w[:, -1]
+        w = w[:, :-1]
     else:
-        # Precompute as much as possible
-        dX = d[:, np.newaxis] * X
+        intercept = 0
+    p = safe_sparse_dot(X, w.T)
+    p += intercept
+    p -= logsumexp(p, axis=1)[:, np.newaxis]
+    loss = -(sample_weight * Y * p).sum()
+    loss += 0.5 * (alpha * w * w).sum()
+    p = np.exp(p, p)
+    return loss, p, w
 
+
+def _multinomial_loss_grad(w, X, Y, alpha, sample_weight):
+    """Computes the multinomial loss, gradient and class probabilities.
+
+    Parameters
+    ----------
+    w : ndarray, shape (n_classes * n_features,) or
+        (n_classes * (n_features + 1),)
+        Coefficient vector.
+
+    X : {array-like, sparse matrix}, shape (n_samples, n_features)
+        Training data.
+
+    Y : ndarray, shape (n_samples, n_classes)
+        Transformed labels according to the output of LabelBinarizer.
+
+    alpha : float
+        Regularization parameter. alpha is equal to 1 / C.
+
+    sample_weight : array-like, shape (n_samples,) optional
+        Array of weights that are assigned to individual samples.
+
+    Returns
+    -------
+    loss : float
+        Multinomial loss.
+
+    grad : ndarray, shape (n_classes * n_features,) or
+        (n_classes * (n_features + 1),)
+        Ravelled gradient of the multinomial loss.
+
+    p : ndarray, shape (n_samples, n_classes)
+        Estimated class probabilities
+
+    Reference
+    ---------
+    Bishop, C. M. (2006). Pattern recognition and machine learning.
+    Springer. (Chapter 4.3.4)
+    """
+    n_classes = Y.shape[1]
+    n_features = X.shape[1]
+    fit_intercept = (w.size == n_classes * (n_features + 1))
+    grad = np.zeros((n_classes, n_features + bool(fit_intercept)))
+    alpha = alpha.reshape(n_classes, -1)
+    loss, p, w = _multinomial_loss(w, X, Y, alpha, sample_weight)
+    sample_weight = sample_weight[:, np.newaxis]
+    diff = sample_weight * (p - Y)
+    grad[:, :n_features] = safe_sparse_dot(diff.T, X)
+    grad[:, :n_features] += alpha * w
     if fit_intercept:
-        # Calculate the double derivative with respect to intercept
-        # In the case of sparse matrices this returns a matrix object.
-        dd_intercept = np.squeeze(np.array(dX.sum(axis=0)))
+        grad[:, -1] = diff.sum(axis=0)
+    return loss, grad.ravel(), p
 
-    def Hs(s):
-        ret = np.empty_like(s)
-        ret[:n_features] = X.T.dot(dX.dot(s[:n_features]))
-        ret[:n_features] += alpha * s[:n_features]
 
-        # For the fit intercept case.
+def _multinomial_grad_hess(w, X, Y, alpha, sample_weight):
+    """
+    Computes the gradient and the Hessian, in the case of a multinomial loss.
+
+    Parameters
+    ----------
+    w : ndarray, shape (n_classes * n_features,) or
+        (n_classes * (n_features + 1),)
+        Coefficient vector.
+
+    X : {array-like, sparse matrix}, shape (n_samples, n_features)
+        Training data.
+
+    Y : ndarray, shape (n_samples, n_classes)
+        Transformed labels according to the output of LabelBinarizer.
+
+    alpha : float
+        Regularization parameter. alpha is equal to 1 / C.
+
+    sample_weight : array-like, shape (n_samples,) optional
+        Array of weights that are assigned to individual samples.
+
+    Returns
+    -------
+    grad : array, shape (n_classes * n_features,) or
+        (n_classes * (n_features + 1),)
+        Ravelled gradient of the multinomial loss.
+
+    hessp : callable
+        Function that takes in a vector input of shape (n_classes * n_features)
+        or (n_classes * (n_features + 1)) and returns matrix-vector product
+        with hessian.
+
+    References
+    ----------
+    Barak A. Pearlmutter (1993). Fast Exact Multiplication by the Hessian.
+        http://www.bcl.hamilton.ie/~barak/papers/nc-hessian.pdf
+    """
+    n_features = X.shape[1]
+    n_classes = Y.shape[1]
+    fit_intercept = w.size == (n_classes * (n_features + 1))
+
+    # `loss` is unused. Refactoring to avoid computing it does not
+    # significantly speed up the computation and decreases readability
+    loss, grad, p = _multinomial_loss_grad(w, X, Y, alpha, sample_weight)
+    sample_weight = sample_weight[:, np.newaxis]
+    alpha = alpha.reshape(n_classes, -1)
+
+
+    # Hessian-vector product derived by applying the R-operator on the gradient
+    # of the multinomial loss function.
+    def hessp(v):
+        v = v.reshape(n_classes, -1)
         if fit_intercept:
-            ret[:n_features] += s[-1] * dd_intercept
-            ret[-1] = dd_intercept.dot(s[:n_features])
-            ret[-1] += d.sum() * s[-1]
-        return ret
+            inter_terms = v[:, -1]
+            v = v[:, :-1]
+        else:
+            inter_terms = 0
+        # r_yhat holds the result of applying the R-operator on the multinomial
+        # estimator.
+        r_yhat = safe_sparse_dot(X, v.T)
+        r_yhat += inter_terms
+        r_yhat += (-p * r_yhat).sum(axis=1)[:, np.newaxis]
+        r_yhat *= p
+        r_yhat *= sample_weight
+        hessProd = np.zeros((n_classes, n_features + bool(fit_intercept)))
+        hessProd[:, :n_features] = safe_sparse_dot(r_yhat.T, X)
+        hessProd[:, :n_features] += v * alpha
+        if fit_intercept:
+            hessProd[:, -1] = r_yhat.sum(axis=0)
+        return hessProd.ravel()
 
-    return grad, Hs
-
-
+    return grad, hessp
