@@ -116,7 +116,7 @@ def hoag_lbfgs(
                 h_func_old = h_func
                 h_func, h_grad = h_func_grad(x, lambdak)
                 if linalg.norm(h_grad) < epsilon_tol:
-                    print(linalg.norm(h_grad))
+                    print('h_grad norm', linalg.norm(h_grad))
                     # this one is finished
                     break
 
@@ -150,25 +150,10 @@ def hoag_lbfgs(
             matvec=lambda z: fhs(z))
 
         g_func, g_grad = g_func_grad(x, lambdak)
-        Bxk, success = splinalg.cg(B_op, g_grad, x0=Bxk, tol=epsilon_tol)
+        Bxk, success = splinalg.cg(B_op, g_grad, x0=Bxk, tol=epsilon_tol / g_grad.size, maxiter=20)
         if success is False:
             raise ValueError
 
-        # .. update hyperparameters ..
-        grad_lambda = - h_crossed(x, lambdak).dot(Bxk)
-        old_grads.append(linalg.norm(grad_lambda))
-
-        old_lambdak = lambdak
-        # pk = 0.8 * grad_lambda + 0.2 * old_grad_lambda
-        pk = grad_lambda
-
-        if L_lambda is None:
-            L_lambda = old_grads[-1]
-
-        step_size = (1./L_lambda)
-
-        tmp = lambdak - step_size * pk
-        lambdak = tmp
 
         # .. decrease accuracy ..
 
@@ -186,7 +171,26 @@ def hoag_lbfgs(
             raise NotImplementedError
 
         epsilon_tol = max(epsilon_tol, exact_epsilon)
+        # .. update hyperparameters ..
+        grad_lambda = - h_crossed(x, lambdak).dot(Bxk)
+        if linalg.norm(grad_lambda) == 0:
+            # increase tolerance
+            print('too low tolerance %s, moving to next iteration' % epsilon_tol)
+            continue
+        old_grads.append(linalg.norm(grad_lambda))
+
+        # pk = 0.8 * grad_lambda + 0.2 * old_grad_lambda
+        pk = grad_lambda
+
+        if L_lambda is None:
+            L_lambda = old_grads[-1]
+
+        step_size = (1./L_lambda)
+
+        old_lambdak = lambdak
+        lambdak -= lambdak - step_size * pk
         incr = linalg.norm(lambdak - old_lambdak)
+
 
         if g_func - epsilon_tol <= g_func_old + old_epsilon_tol + \
                 old_epsilon_tol * incr - (L_lambda / 2.) * incr * incr:
@@ -202,11 +206,11 @@ def hoag_lbfgs(
             if L_lambda < 1e3:
                 L_lambda *= 1.2
 
-        norm_lambda = linalg.norm(pk)
-        print(('it %s, pk: %s, grad h_func: %s, lambda %s, epsilon: %s, ' +
-              'L: %s, grad_lambda: %s') %
-              (it, norm_lambda, linalg.norm(h_grad), lambdak, epsilon_tol, L_lambda,
-               grad_lambda))
+        norm_pk = linalg.norm(pk)
+        print(('it %s, norm pk: %s, grad h_func: %s, norm lambda %s, epsilon: %s, ' +
+              'L: %s, norm grad_lambda: %s') %
+              (it, norm_pk, linalg.norm(h_grad), linalg.norm(lambdak), epsilon_tol, L_lambda,
+               linalg.norm(grad_lambda)))
         g_func_old = g_func
 
         if callback is not None:

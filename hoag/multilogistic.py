@@ -5,11 +5,11 @@ from sklearn.utils.fixes import expit
 from sklearn.utils.extmath import log_logistic, safe_sparse_dot
 
 
-class LogisticRegressionCV(linear_model.base.BaseEstimator,
+class MultiLogisticRegressionCV(linear_model.base.BaseEstimator,
                            linear_model.base.LinearClassifierMixin):
 
     def __init__(
-                 self, alpha0=0., tol=0.1, callback=None, verbose=False,
+                 self, alpha0=None, tol=0.1, callback=None, verbose=False,
                  tolerance_decrease='exponential', max_iter=10):
         self.alpha0 = alpha0
         self.tol = tol
@@ -21,26 +21,28 @@ class LogisticRegressionCV(linear_model.base.BaseEstimator,
     def fit(self, Xt, yt, Xh, yh, callback=None):
         x0 = np.random.randn(Xt.shape[1])
 
+        assert x0.size == self.alpha0.size
+
         def h_func_grad(x, alpha):
             return _logistic_loss_and_grad(
-                x, Xt, yt, np.exp(alpha[0]))
+                x, Xt, yt, np.exp(alpha))
 
         def h_hessian(x, alpha):
             return _logistic_grad_hess(
-                x, Xt, yt, np.exp(alpha[0]))[1]
+                x, Xt, yt, np.exp(alpha))[1]
 
         def g_func_grad(x, alpha):
             return _logistic_loss_and_grad(x, Xh, yh, 0)
 
         def h_crossed(x, alpha):
-            return np.exp(alpha[0]) * x
+            return np.outer(np.exp(alpha), x).T
 
         from hoag import hoag_lbfgs
         opt = hoag_lbfgs(
             h_func_grad, h_hessian, h_crossed, g_func_grad, x0,
             callback=callback,
             tolerance_decrease=self.tolerance_decrease,
-            lambda0=[self.alpha0], maxiter=self.max_iter)
+            lambda0=self.alpha0, maxiter=self.max_iter)
 
         # opt = _minimize_lbfgsb(
         #     h_func_grad, DE_DX, H, x0, callback=callback,
@@ -114,7 +116,7 @@ def _logistic_loss_and_grad(w, X, y, alpha, sample_weight=None):
         sample_weight = np.ones(y.shape[0])
 
     # Logistic loss is the negative of the log of the logistic function.
-    out = -np.sum(sample_weight * log_logistic(yz)) + .5 * alpha * np.dot(w, w)
+    out = -np.sum(sample_weight * log_logistic(yz)) + .5 * (alpha * w).dot(w)
 
     z = expit(yz)
     z0 = sample_weight * (z - 1) * y
@@ -137,7 +139,7 @@ def _logistic_loss(w, X, y, alpha, sample_weight=None):
         Training data.
     y : ndarray, shape (n_samples,)
         Array of labels.
-    alpha : float
+    alpha : ndarray
         Regularization parameter. alpha is equal to 1 / C.
     sample_weight : array-like, shape (n_samples,) optional
         Array of weights that are assigned to individual samples.
@@ -153,7 +155,7 @@ def _logistic_loss(w, X, y, alpha, sample_weight=None):
         sample_weight = np.ones(y.shape[0])
 
     # Logistic loss is the negative of the log of the logistic function.
-    out = -np.sum(sample_weight * log_logistic(yz)) + .5 * alpha * np.dot(w, w)
+    out = -np.sum(sample_weight * log_logistic(yz)) + .5 * (alpha * w).dot(w)
     return out
 
 
