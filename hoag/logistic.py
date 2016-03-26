@@ -9,7 +9,7 @@ class LogisticRegressionCV(linear_model.base.BaseEstimator,
                            linear_model.base.LinearClassifierMixin):
 
     def __init__(
-                 self, alpha0=0., tol=0.1, callback=None, verbose=False,
+                 self, alpha0=0., tol=0.1, callback=None, verbose=0,
                  tolerance_decrease='exponential', max_iter=10):
         self.alpha0 = alpha0
         self.tol = tol
@@ -40,7 +40,8 @@ class LogisticRegressionCV(linear_model.base.BaseEstimator,
             h_func_grad, h_hessian, h_crossed, g_func_grad, x0,
             callback=callback,
             tolerance_decrease=self.tolerance_decrease,
-            lambda0=[self.alpha0], maxiter=self.max_iter)
+            lambda0=[self.alpha0], maxiter=self.max_iter,
+            verbose=self.verbose)
 
         # opt = _minimize_lbfgsb(
         #     h_func_grad, DE_DX, H, x0, callback=callback,

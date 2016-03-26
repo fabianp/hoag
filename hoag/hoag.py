@@ -10,7 +10,7 @@ def hoag_lbfgs(
     lambda0=0., disp=None, maxcor=10, ftol=1e-24,
     maxiter=100, only_fit=False,
     iprint=-1, maxls=20, tolerance_decrease='exponential',
-    callback=None):
+    callback=None, verbose=0):
     """
     HOAG algorithm using L-BFGS-B in the inner optimization algorithm.
 
@@ -116,7 +116,8 @@ def hoag_lbfgs(
                 h_func_old = h_func
                 h_func, h_grad = h_func_grad(x, lambdak)
                 if linalg.norm(h_grad) < epsilon_tol:
-                    print('h_grad norm', linalg.norm(h_grad))
+                    if verbose > 0:
+                        print('h_grad norm', linalg.norm(h_grad))
                     # this one is finished
                     break
 
@@ -128,8 +129,9 @@ def hoag_lbfgs(
                 else:
                     n_iterations += 1
             else:
-                print('LBFGS decided finish!')
-                print(task_str)
+                if verbose > 0:
+                    print('LBFGS decided finish!')
+                    print(task_str)
                 break
                 task[:] = 'START'
                 # 1/0
@@ -142,7 +144,8 @@ def hoag_lbfgs(
             break
 
         if tolerance_decrease == 'exact':
-            print('Norm grad after lbfgs: %s' % linalg.norm(h_grad))
+            if verbose > 0:
+                print('Norm grad after lbfgs: %s' % linalg.norm(h_grad))
 
         fhs = h_hessian(x, lambdak)
         B_op = splinalg.LinearOperator(
@@ -153,9 +156,6 @@ def hoag_lbfgs(
         Bxk, success = splinalg.cg(B_op, g_grad, x0=Bxk, tol=epsilon_tol / g_grad.size, maxiter=20)
         if success is False:
             raise ValueError
-
-
-        # .. decrease accuracy ..
 
         # .. decrease accuracy ..
         old_epsilon_tol = epsilon_tol
@@ -175,12 +175,10 @@ def hoag_lbfgs(
         grad_lambda = - h_crossed(x, lambdak).dot(Bxk)
         if linalg.norm(grad_lambda) == 0:
             # increase tolerance
-            print('too low tolerance %s, moving to next iteration' % epsilon_tol)
+            if verbose > 0:
+                print('too low tolerance %s, moving to next iteration' % epsilon_tol)
             continue
         old_grads.append(linalg.norm(grad_lambda))
-
-        # pk = 0.8 * grad_lambda + 0.2 * old_grad_lambda
-        pk = grad_lambda
 
         if L_lambda is None:
             L_lambda = old_grads[-1]
@@ -188,29 +186,28 @@ def hoag_lbfgs(
         step_size = (1./L_lambda)
 
         old_lambdak = lambdak
-        lambdak -= lambdak - step_size * pk
+        lambdak -= step_size * grad_lambda
         incr = linalg.norm(lambdak - old_lambdak)
-
 
         if g_func - epsilon_tol <= g_func_old + old_epsilon_tol + \
                 old_epsilon_tol * incr - (L_lambda / 2.) * incr * incr:
             # increase step size
             L_lambda *= .8
-            print('increased step size')
-        # elif g_func <= g_func_old:
-        #     # do nothing
-        #     pass
+            if verbose > 0:
+                print('increased step size')
         else:
-            print('decrease step size')
+            if verbose > 0:
+                print('decrease step size')
             # decrease step size
             if L_lambda < 1e3:
                 L_lambda *= 1.2
 
-        norm_pk = linalg.norm(pk)
-        print(('it %s, norm pk: %s, grad h_func: %s, norm lambda %s, epsilon: %s, ' +
-              'L: %s, norm grad_lambda: %s') %
-              (it, norm_pk, linalg.norm(h_grad), linalg.norm(lambdak), epsilon_tol, L_lambda,
-               linalg.norm(grad_lambda)))
+        norm_grad_lambda = linalg.norm(grad_lambda)
+        if verbose > 0:
+            print(('it %s, grad h_func: %s, norm lambda %s, epsilon: %s, ' +
+                  'L: %s, norm grad_lambda: %s') %
+                  (it, linalg.norm(h_grad), linalg.norm(lambdak), epsilon_tol, L_lambda,
+                   norm_grad_lambda))
         g_func_old = g_func
 
         if callback is not None:

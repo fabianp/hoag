@@ -30,6 +30,9 @@ def test_LogisticRegressionCV():
 
     best_alpha = all_alphas[np.argmin(all_scores)]
 
-    clf = LogisticRegressionCV()
+    clf = LogisticRegressionCV(verbose=True)
     clf.fit(Xt, yt, Xh, yh)
     assert np.abs(clf.alpha_ - best_alpha) < 0.5
+
+if __name__ == '__main__':
+    test_LogisticRegressionCV()
