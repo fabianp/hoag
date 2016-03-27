@@ -13,3 +13,8 @@ Depends
 -------
 
   * scikit-learn 0.16
+
+Usage tips
+----------
+
+Standardize features of the input data such that each feature has unit variance. This makes the Hessian better conditioned. This can be done using e.g. scikit-learn's StandardScaler.

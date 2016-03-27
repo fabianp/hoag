@@ -1,4 +1,5 @@
 import numpy as np
+from scipy import sparse
 from sklearn import linear_model
 from sklearn.utils.extmath import safe_sparse_dot, logsumexp, squared_norm
 from sklearn.preprocessing import LabelBinarizer
@@ -31,10 +32,11 @@ class MultiLogisticRegressionCV(linear_model.base.BaseEstimator,
             print('warning: only two classes detected')
 
         n_classes = Yt_multi.shape[1]
+        n_features = Xt.shape[1]
 
         # if not np.all(np.unique(yt) == np.array([-1, 1])):
         #     raise ValueError
-        x0 = np.zeros(Xt.shape[1] * n_classes)
+        x0 = np.zeros(n_features * n_classes)
 
         # assert x0.size == self.alpha0.size
 
@@ -57,7 +59,10 @@ class MultiLogisticRegressionCV(linear_model.base.BaseEstimator,
         def h_crossed(x, alpha):
             # return x.reshape((n_classes, -1)) * alpha
             # x = x.reshape((-1,Yt_multi.shape[1]))
-            return np.outer(np.exp(alpha), x)
+            tmp = np.exp(alpha) * x
+            return sparse.dia_matrix(
+                (tmp, 0),
+                shape=(n_features * n_classes, n_features * n_classes))
 
         opt = hoag_lbfgs(
             h_func_grad, h_hessian, h_crossed, g_func_grad, x0,
@@ -65,11 +70,6 @@ class MultiLogisticRegressionCV(linear_model.base.BaseEstimator,
             tolerance_decrease=self.tolerance_decrease,
             lambda0=self.alpha0, maxiter=self.max_iter,
             verbose=self.verbose)
-
-        # opt = _minimize_lbfgsb(
-        #     h_func_grad, DE_DX, H, x0, callback=callback,
-        #     tolerance_decrease=self.tolerance_decrease,
-        #     lambda0=self.alpha0, maxiter=self.max_iter)
 
         self.coef_ = opt[0]
         self.alpha_ = opt[1]
@@ -83,6 +83,7 @@ class MultiLogisticRegressionCV(linear_model.base.BaseEstimator,
 
 ### The following is adapted from scikit-learn
 
+L2_REG = 0
 
 def _multinomial_loss(w, X, Y, alpha, sample_weight):
     """Computes multinomial loss and class probabilities.
@@ -137,7 +138,7 @@ def _multinomial_loss(w, X, Y, alpha, sample_weight):
     p += intercept
     p -= logsumexp(p, axis=1)[:, np.newaxis]
     loss = -(sample_weight * Y * p).sum()
-    loss += 0.5 * (alpha * w * w).sum()
+    loss += 0.5 * ((alpha + L2_REG) * w * w).sum()
     p = np.exp(p, p)
     return loss, p, w
 
@@ -189,7 +190,7 @@ def _multinomial_loss_grad(w, X, Y, alpha, sample_weight):
     sample_weight = sample_weight[:, np.newaxis]
     diff = sample_weight * (p - Y)
     grad[:, :n_features] = safe_sparse_dot(diff.T, X)
-    grad[:, :n_features] += alpha * w
+    grad[:, :n_features] += (alpha + L2_REG) * w
     if fit_intercept:
         grad[:, -1] = diff.sum(axis=0)
     return loss, grad.ravel(), p
@@ -262,7 +263,7 @@ def _multinomial_grad_hess(w, X, Y, alpha, sample_weight):
         r_yhat *= sample_weight
         hessProd = np.zeros((n_classes, n_features + bool(fit_intercept)))
         hessProd[:, :n_features] = safe_sparse_dot(r_yhat.T, X)
-        hessProd[:, :n_features] += v * alpha
+        hessProd[:, :n_features] += v * (alpha + L2_REG)
         if fit_intercept:
             hessProd[:, -1] = r_yhat.sum(axis=0)
         return hessProd.ravel()
