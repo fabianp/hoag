@@ -10,7 +10,7 @@ class LogisticRegressionCV(linear_model.base.BaseEstimator,
 
     def __init__(
                  self, alpha0=0., tol=0.1, callback=None, verbose=0,
-                 tolerance_decrease='exponential', max_iter=10):
+                 tolerance_decrease='exponential', max_iter=50):
         self.alpha0 = alpha0
         self.tol = tol
         self.callback = callback
