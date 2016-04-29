@@ -26,6 +26,7 @@ class MultiLogisticRegressionCV(linear_model.base.BaseEstimator,
         sample_weight_train = np.ones(Xt.shape[0])
         sample_weight_test = np.ones(Xh.shape[0])
 
+
         if Yt_multi.shape[1] == 1:
             Yt_multi = np.hstack([1 - Yt_multi, Yt_multi])
             Yh_multi = np.hstack([1 - Yh_multi, Yh_multi])
@@ -34,7 +35,8 @@ class MultiLogisticRegressionCV(linear_model.base.BaseEstimator,
         n_classes = Yt_multi.shape[1]
         n_features = Xt.shape[1]
 
-        # if not np.all(np.unique(yt) == np.array([-1, 1])):
+        if self.alpha0 is None:
+            self.alpha0 = np.zeros(n_classes * n_features)  # if not np.all(np.unique(yt) == np.array([-1, 1])):
         #     raise ValueError
         x0 = np.zeros(n_features * n_classes)
 

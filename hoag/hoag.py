@@ -11,7 +11,7 @@ def hoag_lbfgs(
     maxiter=100, maxiter_inner=10000,
     only_fit=False,
     iprint=-1, maxls=20, tolerance_decrease='exponential',
-    callback=None, verbose=0):
+    callback=None, verbose=0, epsilon_tol_init=0.01, exponential_decrease_factor=0.9):
     """
     HOAG algorithm using L-BFGS-B in the inner optimization algorithm.
 
@@ -78,7 +78,6 @@ def hoag_lbfgs(
     isave = zeros(44, int32)
     dsave = zeros(29, float64)
 
-    epsilon_tol_init = 1e-3
     exact_epsilon = 1e-12
     if tolerance_decrease == 'exact':
         epsilon_tol = exact_epsilon
@@ -171,7 +170,7 @@ def hoag_lbfgs(
         elif tolerance_decrease == 'cubic':
             epsilon_tol = epsilon_tol_init / (it ** 3)
         elif tolerance_decrease == 'exponential':
-            epsilon_tol *= 0.9
+            epsilon_tol *= exponential_decrease_factor
         elif tolerance_decrease == 'exact':
             epsilon_tol = 1e-24
         else:
@@ -186,11 +185,13 @@ def hoag_lbfgs(
                 print('too low tolerance %s, moving to next iteration' % epsilon_tol)
             continue
         old_grads.append(linalg.norm(grad_lambda))
+        print('lambdak', lambdak)
 
         if L_lambda is None:
             if old_grads[-1] > 1e-3:
                 # make sure we are not selecting a step size that is too smal
-                L_lambda = old_grads[-1]
+                L_lambda = old_grads[-1] * len(lambdak)
+                print('Set initial lambda to ', L_lambda)
             else:
                 L_lambda = 1
 
