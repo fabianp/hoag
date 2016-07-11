@@ -30,7 +30,7 @@ def test_LogisticRegressionCV():
 
     best_alpha = all_alphas[np.argmin(all_scores)]
 
-    clf = LogisticRegressionCV(verbose=True, max_iter=200)
+    clf = LogisticRegressionCV(verbose=True, max_iter=50)
     clf.fit(Xt, yt, Xh, yh)
     np.testing.assert_array_less(np.abs(clf.alpha_ - best_alpha), 0.5)
 
@@ -40,8 +40,8 @@ def test_MultiLogisticRegressionCV():
     X = bunch.data
     y = bunch.target
 
-    # y[y < y.mean()] = -1
-    # y[y >= y.mean()] = 1
+    y[y < y.mean()] = -1
+    y[y >= y.mean()] = 1
     Xt, Xh, yt, yh = cross_validation.train_test_split(
         X, y, test_size=.5, random_state=0)
     #
@@ -60,8 +60,10 @@ def test_MultiLogisticRegressionCV():
     #
     # best_alpha = all_alphas[np.argmin(all_scores)]
     #
-    clf = MultiLogisticRegressionCV(verbose=True, max_iter=5)
+    clf = MultiLogisticRegressionCV(verbose=True, max_iter=1)
     clf.fit(Xt, yt, Xh, yh)
+    cv_score = clf.score(Xh, yh)
+    np.testing.assert_array_less(cv_score, 0.0)
     # np.testing.assert_array_less(np.abs(clf.alpha_ - best_alpha), 0.5)
 
 

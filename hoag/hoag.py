@@ -11,14 +11,14 @@ def hoag_lbfgs(
     maxiter=100, maxiter_inner=10000,
     only_fit=False,
     iprint=-1, maxls=20, tolerance_decrease='exponential',
-    callback=None, verbose=0, epsilon_tol_init=0.01, exponential_decrease_factor=0.9):
+    callback=None, verbose=0, epsilon_tol_init=1e-3, exponential_decrease_factor=0.9):
     """
     HOAG algorithm using L-BFGS-B in the inner optimization algorithm.
 
     Options
     -------
     eps : float
-        Step size used for numerical approximation of the jacobian.
+        Step size used for numerical approximation of the Jacobian.
     disp : int
         Set to True to print convergence messages.
     maxfun : int
@@ -93,7 +93,6 @@ def hoag_lbfgs(
 
     # n_eval, F = wrap_function(F, ())
     h_func, h_grad = h_func_grad(x, lambdak)
-    residual_init = None
     norm_init = linalg.norm(h_grad)
     old_grads = []
 
@@ -101,6 +100,7 @@ def hoag_lbfgs(
         h_func, h_grad = h_func_grad(x, lambdak)
         n_iterations = 0
         task[:] = 'START'
+        old_x = x.copy()
         while 1:
             pgtol_lbfgs = 1e-120
             factr = 1e-120  # / np.finfo(float).eps
@@ -113,9 +113,7 @@ def hoag_lbfgs(
                 # minimization routine wants h_func and h_grad at the current x
                 # Overwrite h_func and h_grad:
                 h_func, h_grad = h_func_grad(x, lambdak)
-                if linalg.norm(h_grad) < epsilon_tol * norm_init:
-                    if verbose > 1:
-                        print('Ended inner with %s iterations and %s h_grad norm' % (n_iterations, linalg.norm(h_grad)))
+                if linalg.norm(h_grad) / np.exp(np.min(lambdak)) < epsilon_tol * norm_init:
                     # this one is finished
                     break
 
@@ -133,11 +131,8 @@ def hoag_lbfgs(
                     print('LBFGS decided finish!')
                     print(task_str)
                 break
-                # 1/0
-                # break
         else:
             pass
-            # print('Skipped LBFGS')
 
         if only_fit:
             break
@@ -154,16 +149,12 @@ def hoag_lbfgs(
         g_func, g_grad = g_func_grad(x, lambdak)
         if Bxk is None:
             Bxk = x.copy()
-        if residual_init is None:
-            # residual_init = 1.
-            residual_init = linalg.norm(g_grad)
+        residual_init = linalg.norm(g_grad)
         if verbose > 1:
             print('Inverting matrix with precision %s' % (epsilon_tol * residual_init))
         Bxk, success = splinalg.cg(B_op, g_grad, x0=Bxk, tol=epsilon_tol * residual_init, maxiter=maxiter_inner)
         if success != 0:
             print('CG did not converge to the desired precision')
-
-        # .. decrease accuracy ..
         old_epsilon_tol = epsilon_tol
         if tolerance_decrease == 'quadratic':
             epsilon_tol = epsilon_tol_init / (it ** 2)
@@ -185,47 +176,51 @@ def hoag_lbfgs(
                 print('too low tolerance %s, moving to next iteration' % epsilon_tol)
             continue
         old_grads.append(linalg.norm(grad_lambda))
-        print('lambdak', lambdak)
 
         if L_lambda is None:
             if old_grads[-1] > 1e-3:
                 # make sure we are not selecting a step size that is too smal
-                L_lambda = old_grads[-1] * len(lambdak)
-                print('Set initial lambda to ', L_lambda)
+                L_lambda = old_grads[-1] / np.sqrt(len(lambdak))
             else:
                 L_lambda = 1
 
         step_size = (1./L_lambda)
 
-        old_lambdak = lambdak
+        old_lambdak = lambdak.copy()
         lambdak -= step_size * grad_lambda
 
         # projection
-        lambdak[lambdak < -10] = -10
+        lambdak[lambdak < -6] = -6
         lambdak[lambdak > 6] = 6
         incr = linalg.norm(lambdak - old_lambdak)
 
+        C = 0.25
         factor_L_lambda = 1.0
-        if g_func - epsilon_tol <= g_func_old + old_epsilon_tol + \
-                old_epsilon_tol * incr - factor_L_lambda * (L_lambda / 2.0) * incr * incr:
-        # if g_func<= g_func_old - factor_L_lambda * (L_lambda / 2.0) * incr * incr:
-            # increase step size
+        if g_func <= g_func_old + C * epsilon_tol + \
+                old_epsilon_tol * (C + factor_L_lambda) * incr - factor_L_lambda * (L_lambda) * incr * incr:
             L_lambda *= 0.95
             if verbose > 1:
                 print('increased step size')
-        elif g_func <= g_func_old:
-            pass
-        else:
+        elif g_func >= 1.2 * g_func_old:
             if verbose > 1:
                 print('decrease step size')
             # decrease step size
             L_lambda *= 2
+            lambdak = old_lambdak
+            print('!!step size rejected!!', g_func, g_func_old)
+            g_func_old, g_grad_old = g_func_grad(x, old_lambdak)
+            # tighten tolerance
+            epsilon_tol *= 0.5
+        else:
+            pass
 
+        # if g_func - g_func_old > 0:
+        #     raise ValueError
         norm_grad_lambda = linalg.norm(grad_lambda)
         if verbose > 0:
-            print(('it %s, g: %s, sum lambda %s, epsilon: %s, ' +
+            print(('it %s, g: %s, incr: %s, sum lambda %s, epsilon: %s, ' +
                   'L: %s, norm grad_lambda: %s') %
-                  (it, g_func, lambdak.sum(), epsilon_tol, L_lambda,
+                  (it, g_func, g_func - g_func_old, lambdak.sum(), epsilon_tol, L_lambda,
                    norm_grad_lambda))
         g_func_old = g_func
 
@@ -235,8 +230,6 @@ def hoag_lbfgs(
     task_str = task.tostring().strip(b'\x00').strip()
     if task_str.startswith(b'CONV'):
         warnflag = 0
-    elif n_iterations > maxiter:
-        warnflag = 1
     else:
         warnflag = 2
 
