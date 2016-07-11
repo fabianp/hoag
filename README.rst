@@ -25,6 +25,11 @@ This package exports a LogisticRegressionCV class which automatically estimates 
 
 where X_train, y_train, X_test, y_test are numpy arrays representing the train and test set, respectively.
 
+For full usage example check out `this ipython notebook <https://github.com/fabianp/hoag/blob/master/doc/example_usage.ipynb>`_.
+
+.. image:: https://raw.githubusercontent.com/fabianp/hoag/master/doc/hoag_screenshot.png
+   :target: https://github.com/fabianp/hoag/blob/master/doc/example_usage.ipynb
+
 Usage tips
 ----------
 
