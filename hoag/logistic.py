@@ -42,7 +42,7 @@ class LogisticRegressionCV(linear_model.base.BaseEstimator,
             h_func_grad, h_hessian, h_crossed, g_func_grad, x0,
             callback=callback,
             tolerance_decrease=self.tolerance_decrease,
-            lambda0=[self.alpha0], maxiter=self.max_iter,
+            lambda0=np.array([self.alpha0]), maxiter=self.max_iter,
             verbose=self.verbose)
 
         # opt = _minimize_lbfgsb(
