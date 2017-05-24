@@ -91,7 +91,7 @@ def hoag_lbfgs(
     g_func_old = np.inf
 
     if callback is not None:  # LUCA pass also hyper-gradient to callback
-        callback(x, lambdak, np.zeros_like(lambdak))
+        callback(x, lambdak, np.zeros_like(lambdak), 0.)
 
     # n_eval, F = wrap_function(F, ())
     h_func, h_grad = h_func_grad(x, lambdak)
@@ -231,7 +231,7 @@ def hoag_lbfgs(
         g_func_old = g_func
 
         if callback is not None:
-            callback(x, lambdak, grad_lambda)
+            callback(x, lambdak, grad_lambda, step_size)
 
     task_str = task.tostring().strip(b'\x00').strip()
     if task_str.startswith(b'CONV'):
