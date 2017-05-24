@@ -18,10 +18,12 @@ class LogisticRegressionCV(linear_model.base.BaseEstimator,
         self.tolerance_decrease = tolerance_decrease
         self.max_iter = max_iter
 
-    def fit(self, Xt, yt, Xh, yh, callback=None):
+    def fit(self, Xt, yt, Xh, yh, callback=None, projection=None, bias=False):
         if not np.all(np.unique(yt) == np.array([-1, 1])):
             raise ValueError
-        x0 = np.random.randn(Xt.shape[1])
+        _dim = Xt.shape[1]
+        if bias: _dim += 1
+        x0 = np.random.randn(_dim)
 
         def h_func_grad(x, alpha):
             return _logistic_loss_and_grad(
@@ -43,7 +45,7 @@ class LogisticRegressionCV(linear_model.base.BaseEstimator,
             callback=callback,
             tolerance_decrease=self.tolerance_decrease,
             lambda0=np.array([self.alpha0]), maxiter=self.max_iter,
-            verbose=self.verbose)
+            verbose=self.verbose, projection=projection)
 
         # opt = _minimize_lbfgsb(
         #     h_func_grad, DE_DX, H, x0, callback=callback,
@@ -55,10 +57,20 @@ class LogisticRegressionCV(linear_model.base.BaseEstimator,
         return self
 
     def decision_function(self, X):
-        return X.dot(self.coef_)
+        if self.coef_.size == X.shape[1] + 1:
+            c = self.coef_[-1]
+            w = self.coef_[:-1]
+        else:
+            w, c = self.coef_, 0
+
+        return X.dot(w) + c
 
     def predict(self, X):
         return np.sign(self.decision_function(X))
+
+    def accuracy(self, X, Y):
+        prediction = self.predict(X)
+        return np.mean(np.equal(prediction, Y))
 
 ### The following is copied from scikit-learn
 

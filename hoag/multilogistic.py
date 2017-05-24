@@ -78,11 +78,15 @@ class MultiLogisticRegressionCV(linear_model.base.BaseEstimator,
         return self
 
     def decision_function(self, X):
-        return X.dot(self.coef_)
+        return X.dot(self.coef_.reshape([-1, X.shape[1]]).T)
 
     def predict(self, X):
-        return np.sign(self.decision_function(X))
+        return np.argmax(self.decision_function(X), axis=1)
 
+    def accuracy(self, X, Y):
+        prediction = self.predict(X)
+        # print(prediction.shape, Y.shape)
+        return np.mean(np.equal(prediction, Y))
 
 
 class MultiLogisticRegression(linear_model.base.BaseEstimator,
@@ -206,7 +210,8 @@ def _multinomial_loss(w, X, Y, alpha, sample_weight):
     n_features = X.shape[1]
     fit_intercept = w.size == (n_classes * (n_features + 1))
     w = w.reshape(n_classes, -1)
-    alpha = alpha.reshape(n_classes, -1)
+    if isinstance(alpha, np.ndarray):
+        alpha = alpha.reshape(n_classes, -1)
     sample_weight = sample_weight[:, np.newaxis]
     if fit_intercept:
         intercept = w[:, -1]
@@ -264,7 +269,8 @@ def _multinomial_loss_grad(w, X, Y, alpha, sample_weight):
     n_features = X.shape[1]
     fit_intercept = (w.size == n_classes * (n_features + 1))
     grad = np.zeros((n_classes, n_features + bool(fit_intercept)))
-    alpha = alpha.reshape(n_classes, -1)
+    if isinstance(alpha, np.ndarray):  # LUCA
+        alpha = alpha.reshape(n_classes, -1)
     loss, p, w = _multinomial_loss(w, X, Y, alpha, sample_weight)
     sample_weight = sample_weight[:, np.newaxis]
     diff = sample_weight * (p - Y)
@@ -321,7 +327,8 @@ def _multinomial_grad_hess(w, X, Y, alpha, sample_weight):
     # significantly speed up the computation and decreases readability
     loss, grad, p = _multinomial_loss_grad(w, X, Y, alpha, sample_weight)
     sample_weight = sample_weight[:, np.newaxis]
-    alpha = alpha.reshape(n_classes, -1)
+    if isinstance(alpha, np.ndarray):  # LUCA
+        alpha = alpha.reshape(n_classes, -1)
 
 
     # Hessian-vector product derived by applying the R-operator on the gradient

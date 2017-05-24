@@ -11,7 +11,9 @@ def hoag_lbfgs(
     maxiter=100, maxiter_inner=10000,
     only_fit=False,
     iprint=-1, maxls=20, tolerance_decrease='exponential',
-    callback=None, verbose=0, epsilon_tol_init=1e-3, exponential_decrease_factor=0.9):
+    callback=None, verbose=0, epsilon_tol_init=1e-3, exponential_decrease_factor=0.9,
+    projection=None  # LUCA added this to better deal with projections of hyperparameters
+):
     """
     HOAG algorithm using L-BFGS-B in the inner optimization algorithm.
 
@@ -88,8 +90,8 @@ def hoag_lbfgs(
     L_lambda = None
     g_func_old = np.inf
 
-    if callback is not None:
-        callback(x, lambdak)
+    if callback is not None:  # LUCA pass also hyper-gradient to callback
+        callback(x, lambdak, np.zeros_like(lambdak))
 
     # n_eval, F = wrap_function(F, ())
     h_func, h_grad = h_func_grad(x, lambdak)
@@ -190,8 +192,12 @@ def hoag_lbfgs(
         lambdak -= step_size * grad_lambda
 
         # projection
-        lambdak[lambdak < -6] = -6
-        lambdak[lambdak > 6] = 6
+        if projection is None:  # LUCA as originally implemented
+            lambdak[lambdak < -6] = -6
+            lambdak[lambdak > 6] = 6
+        else:
+            lambdak = projection(lambdak)
+
         incr = linalg.norm(lambdak - old_lambdak)
 
         C = 0.25
@@ -225,7 +231,7 @@ def hoag_lbfgs(
         g_func_old = g_func
 
         if callback is not None:
-            callback(x, lambdak)
+            callback(x, lambdak, grad_lambda)
 
     task_str = task.tostring().strip(b'\x00').strip()
     if task_str.startswith(b'CONV'):
