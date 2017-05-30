@@ -95,6 +95,7 @@ def hoag_lbfgs(
     h_func, h_grad = h_func_grad(x, lambdak)
     norm_init = linalg.norm(h_grad)
     old_grads = []
+    old_lambdak = lambdak.copy()
 
     for it in range(1, maxiter):
         h_func, h_grad = h_func_grad(x, lambdak)
@@ -113,7 +114,8 @@ def hoag_lbfgs(
                 # minimization routine wants h_func and h_grad at the current x
                 # Overwrite h_func and h_grad:
                 h_func, h_grad = h_func_grad(x, lambdak)
-                if linalg.norm(h_grad) / np.exp(np.min(lambdak)) < epsilon_tol * norm_init:
+                if linalg.norm(h_grad)  < \
+                    epsilon_tol * norm_init * np.exp(np.min(old_lambdak) - np.min(lambda0)):
                     # this one is finished
                     break
 
@@ -149,10 +151,10 @@ def hoag_lbfgs(
         g_func, g_grad = g_func_grad(x, lambdak)
         if Bxk is None:
             Bxk = x.copy()
-        residual_init = linalg.norm(g_grad)
+        tol_CG = epsilon_tol
         if verbose > 1:
-            print('Inverting matrix with precision %s' % (epsilon_tol * residual_init))
-        Bxk, success = splinalg.cg(B_op, g_grad, x0=Bxk, tol=epsilon_tol * residual_init, maxiter=maxiter_inner)
+            print('Inverting matrix with precision %s' % tol_CG)
+        Bxk, success = splinalg.cg(B_op, g_grad, x0=Bxk, tol=tol_CG, maxiter=maxiter_inner)
         if success != 0:
             print('CG did not converge to the desired precision')
         old_epsilon_tol = epsilon_tol
@@ -192,7 +194,7 @@ def hoag_lbfgs(
         # projection
         lambdak[lambdak < -6] = -6
         lambdak[lambdak > 6] = 6
-        incr = linalg.norm(lambdak - old_lambdak)
+        incr = linalg.norm(step_size * grad_lambda)
 
         C = 0.25
         factor_L_lambda = 1.0
@@ -201,18 +203,28 @@ def hoag_lbfgs(
             L_lambda *= 0.95
             if verbose > 1:
                 print('increased step size')
+            lambdak -= step_size * grad_lambda
         elif g_func >= 1.2 * g_func_old:
             if verbose > 1:
                 print('decrease step size')
             # decrease step size
             L_lambda *= 2
-            lambdak = old_lambdak
+            lambdak = old_lambdak.copy()
             print('!!step size rejected!!', g_func, g_func_old)
             g_func_old, g_grad_old = g_func_grad(x, old_lambdak)
             # tighten tolerance
             epsilon_tol *= 0.5
         else:
-            pass
+            old_lambdak = lambdak.copy()
+            lambdak -= step_size * grad_lambda
+
+        # projection
+        if projection is None:  # LUCA as originally implemented
+            lambdak[lambdak < -6] = -6
+            lambdak[lambdak > 6] = 6
+        else:
+            lambdak = projection(lambdak)
+
 
         # if g_func - g_func_old > 0:
         #     raise ValueError
