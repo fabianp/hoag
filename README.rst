@@ -34,3 +34,20 @@ Usage tips
 ----------
 
 Standardize features of the input data such that each feature has unit variance. This makes the Hessian better conditioned. This can be done using e.g. scikit-learn's StandardScaler.
+
+Citing
+------
+
+If you use this, please cite it as
+
+
+.. code-block::
+
+  @inproceedings{PedregosaHyperparameter16,
+    author    = {Fabian Pedregosa},
+    title     = {Hyperparameter optimization with approximate gradient},
+    booktitle = {Proceedings of the 33nd International Conference on Machine Learning,
+                 {ICML}},
+    year      = {2016},
+    url       = {http://jmlr.org/proceedings/papers/v48/pedregosa16.html},
+  }
