@@ -11,7 +11,8 @@ def hoag_lbfgs(
     maxiter=100, maxiter_inner=10000,
     only_fit=False,
     iprint=-1, maxls=20, tolerance_decrease='exponential',
-    callback=None, verbose=0, epsilon_tol_init=1e-3, exponential_decrease_factor=0.9):
+    callback=None, verbose=0, epsilon_tol_init=1e-3, exponential_decrease_factor=0.9,
+    projection=None):
     """
     HOAG algorithm using L-BFGS-B in the inner optimization algorithm.
 
@@ -219,9 +220,8 @@ def hoag_lbfgs(
             lambdak -= step_size * grad_lambda
 
         # projection
-        if projection is None:  # LUCA as originally implemented
-            lambdak[lambdak < -6] = -6
-            lambdak[lambdak > 6] = 6
+        if projection is None:
+            pass
         else:
             lambdak = projection(lambdak)
 
