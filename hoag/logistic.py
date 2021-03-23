@@ -1,12 +1,12 @@
 import numpy as np
 from scipy import sparse
 from sklearn import linear_model
-from sklearn.utils.fixes import expit
+from scipy.special import expit
 from sklearn.utils.extmath import log_logistic, safe_sparse_dot
 
 
-class LogisticRegressionCV(linear_model.base.BaseEstimator,
-                           linear_model.base.LinearClassifierMixin):
+class LogisticRegressionCV(linear_model._base.BaseEstimator,
+                           linear_model._base.LinearClassifierMixin):
 
     def __init__(
                  self, alpha0=0., tol=0.1, callback=None, verbose=0,
@@ -228,5 +228,3 @@ def _logistic_grad_hess(w, X, y, alpha, sample_weight=None):
         return ret
 
     return grad, Hs
-
-
