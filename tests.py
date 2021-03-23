@@ -1,7 +1,7 @@
 
 import numpy as np
 from sklearn.datasets import fetch_20newsgroups_vectorized
-from sklearn import linear_model, cross_validation
+from sklearn import linear_model, model_selection
 from hoag import LogisticRegressionCV, MultiLogisticRegressionCV
 
 
@@ -12,7 +12,7 @@ def test_LogisticRegressionCV():
 
     y[y < y.mean()] = -1
     y[y >= y.mean()] = 1
-    Xt, Xh, yt, yh = cross_validation.train_test_split(
+    Xt, Xh, yt, yh = model_selection.train_test_split(
         X, y, test_size=.5, random_state=0)
 
     # compute the scores
