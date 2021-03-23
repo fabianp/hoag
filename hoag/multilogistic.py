@@ -1,13 +1,14 @@
 import numpy as np
 from scipy import sparse
+from scipy.special import logsumexp
 from sklearn import linear_model
-from sklearn.utils.extmath import safe_sparse_dot, logsumexp, squared_norm
+from sklearn.utils.extmath import safe_sparse_dot, squared_norm
 from sklearn.preprocessing import LabelBinarizer
 from .hoag import hoag_lbfgs
 
 
-class MultiLogisticRegressionCV(linear_model.base.BaseEstimator,
-                           linear_model.base.LinearClassifierMixin):
+class MultiLogisticRegressionCV(linear_model._base.BaseEstimator,
+                           linear_model._base.LinearClassifierMixin):
 
     def __init__(self, alpha0=None, tol=0.1, callback=None, verbose=0,
                  tolerance_decrease='exponential', max_iter=10):
@@ -85,8 +86,8 @@ class MultiLogisticRegressionCV(linear_model.base.BaseEstimator,
 
 
 
-class MultiLogisticRegression(linear_model.base.BaseEstimator,
-                           linear_model.base.LinearClassifierMixin):
+class MultiLogisticRegression(linear_model._base.BaseEstimator,
+                           linear_model._base.LinearClassifierMixin):
 
     def __init__(self, alpha0=None, tol=0.1, callback=None, verbose=0,
                  tolerance_decrease='exponential', max_iter=10):
